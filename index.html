@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#12305b">
+<title>نظام الحضور والانصراف</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{--bg:#f3f6fb;--card:#fff;--ink:#172033;--muted:#667085;--primary:#155eef;--line:#e5eaf2;--green:#087443;--red:#b42318;--navy:#102a56}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Tahoma,Arial,sans-serif;color:var(--ink)}
+header{background:var(--navy);color:white;padding:17px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}header h1{font-size:20px;margin:0}.wrap{max-width:1120px;margin:22px auto;padding:0 14px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:19px;margin-bottom:15px;box-shadow:0 5px 18px #14213d0a}
+h2{font-size:18px;margin:0 0 13px}h3{font-size:15px;margin:8px 0}p{line-height:1.8}label{display:block;font-size:13px;color:var(--muted);margin:11px 0 6px}
+input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5e2;border-radius:9px;font:inherit;background:white;color:var(--ink)}textarea{min-height:84px}button{border:0;border-radius:9px;padding:10px 15px;background:var(--primary);color:white;font:inherit;cursor:pointer;margin:5px 3px}button.secondary{background:#e9efff;color:#1747a6}button.danger{background:var(--red)}button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>.field{flex:1;min-width:210px}.muted{color:var(--muted);font-size:13px}.hidden{display:none!important}.status{padding:12px 14px;border-radius:10px;background:#eef4ff;margin:12px 0;white-space:pre-wrap;line-height:1.7}.success{background:#e8f7ef;color:#087443}.error{background:#fff0f0;color:#a12626}.warning{background:#fff7e6;color:#8a5200}
+#qr{display:flex;justify-content:center;align-items:center;min-height:230px;margin:16px auto}#qr canvas,#qr img{max-width:100%;height:auto!important}.center{text-align:center}.count{font-size:30px;font-weight:bold;color:var(--primary)}.request{border:1px solid var(--line);border-radius:12px;padding:13px;margin:10px 0;background:#fbfcff}.request .row{align-items:end}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px;min-width:650px}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle}th{background:#f7f9fc}.smallbtn{padding:7px 10px;font-size:12px}.footnote{font-size:12px;color:var(--muted)}
+@media(max-width:600px){.wrap{margin:12px auto}.card{padding:14px}header{padding:14px}header h1{font-size:17px}.row>.field{min-width:100%}}
+@media print{header button,.no-print{display:none!important}body{background:#fff}.card{box-shadow:none;break-inside:avoid}}
+</style>
+</head>
+<body>
+<header>
+  <h1>نظام الحضور والانصراف</h1>
+  <div><span id="who" class="muted" style="color:#dce7ff"></span> <button id="showAdminLogin" class="secondary" onclick="toggleManagerLogin()">تسجيل دخول الإدارة</button> <button id="logoutBtn" class="secondary hidden" onclick="logoutManager()">خروج الإدارة</button></div>
+</header>
+<main class="wrap">
+  <section class="card" id="qrHome">
+    <h2 class="center">رمز QR للحضور والانصراف</h2>
+    <p class="muted center">امسح الرمز بكاميرا الجوال لتسجيل الحضور أو الانصراف. يتجدد الرمز كل 20 ثانية.</p>
+    <div class="center"><strong id="qrDate"></strong><div id="qrClock" class="muted"></div></div>
+    <div id="qr" class="center">جاري تجهيز الرمز...</div>
+    <div class="center"><span id="countdown" class="count">20</span><div class="muted">ثانية متبقية</div></div>
+    <div id="qrError" class="status hidden error"></div>
+    <div class="center"><button class="secondary hidden" id="adminPanelBtn" onclick="toggleAdminPanel()">لوحة الإدارة</button></div>
+  </section>
+
+  <section class="card" id="loginCard">
+    <h2>دخول الإدارة</h2>
+    <p class="muted">الموظفون لا يحتاجون إلى بريد أو كلمة مرور؛ يمسح الموظف رمز QR من شاشة الإدارة لأول مرة لطلب اعتماد جواله.</p>
+    <div class="row">
+      <div class="field"><label>بريد المدير</label><input id="email" type="email" autocomplete="username"></div>
+      <div class="field"><label>كلمة المرور</label><input id="password" type="password" autocomplete="current-password"></div>
+    </div>
+    <button onclick="loginManager()">دخول الإدارة</button>
+    <div id="loginMsg" class="status hidden"></div>
+  </section>
+
+  <section class="card hidden" id="employeeCard">
+    <h2>تسجيل الموظف من الجوال</h2>
+    <div id="employeeState" class="status">امسح رمز QR المعروض على شاشة الإدارة لبدء التسجيل.</div>
+    <div id="employeeActions" class="hidden">
+      <p id="employeeHello" class="muted"></p>
+      <label>رمز QR (يُملأ تلقائياً عند فتح الرابط من المسح)</label>
+      <input id="employeeToken" autocomplete="off" placeholder="سيظهر الرمز تلقائياً بعد مسح QR">
+      <button id="attendBtn" onclick="submitEmployeeAttendance()">تسجيل الحضور / الانصراف</button>
+      <div id="attendanceMsg" class="status hidden"></div>
+    </div>
+    <p class="footnote">ملاحظة: يلزم فتح رابط الموقع عبر HTTPS حتى يعمل التخزين التشفيري في المتصفح.</p>
+  </section>
+
+  <section class="hidden" id="managerPanel">
+    <div class="card">
+      <h2>طلبات اعتماد الجوالات</h2>
+      <p class="muted">تظهر الطلبات الجديدة تلقائياً. عند الموافقة يمكنك ربط الجوال بموظف موجود، أو تركه كموظف جديد وإضافة اسمه ورقمه لاحقاً.</p>
+      <div id="requests">لا توجد طلبات معلّقة.</div>
+    </div>
+
+    <div class="card">
+      <h2>إدارة الموظفين</h2>
+      <p class="muted">بعد اعتماد أول جوال لموظف جديد، اكتب اسمه ورقمه الوظيفي هنا. يمكنك أيضاً إيقاف الموظف.</p>
+      <div id="staffTable"></div>
+    </div>
+
+    <div class="card">
+      <h2>أوقات الدوام</h2>
+      <p class="muted">يستخدم النظام توقيت الرياض Asia/Riyadh في حساب التأخير والانصراف المبكر.</p>
+      <div class="row"><div class="field"><label>بداية الدوام</label><input id="workStart" type="time" value="08:00"></div><div class="field"><label>نهاية الدوام</label><input id="workEnd" type="time" value="17:00"></div></div>
+      <button onclick="saveSchedule()">حفظ أوقات الدوام</button><div id="scheduleMsg" class="status hidden"></div>
+    </div>
+
+    <div class="card">
+      <h2>رسائل نجاح التسجيل</h2>
+      <label>رسالة الحضور</label><textarea id="inMessage"></textarea>
+      <label>رسالة الانصراف</label><textarea id="outMessage"></textarea>
+      <p class="muted">المتغيرات المتاحة: {اسم الموظف} {رقم الموظف} {التاريخ} {الوقت}</p>
+      <button onclick="saveMessages()">حفظ الرسائل</button><div id="messagesMsg" class="status hidden"></div>
+    </div>
+
+    <div class="card">
+      <h2>سجل الحضور والانصراف</h2>
+      <div class="row"><div class="field"><label>بحث بالاسم أو الرقم الوظيفي</label><input id="searchAttendance" oninput="renderAttendance()" placeholder="ابحث..."></div><div class="field"><label>التاريخ</label><input id="filterDate" type="date" oninput="renderAttendance()"></div></div>
+      <button class="secondary no-print" onclick="downloadBackup()">تنزيل نسخة JSON</button>
+      <button class="secondary no-print" onclick="exportCSV()">تصدير CSV</button>
+      <button class="secondary no-print" onclick="window.print()">طباعة</button>
+      <div id="attendanceTable" class="table-wrap"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ضع Project URL و anon/public key من Supabase هنا. لا تضع service_role key في هذا الملف.
+const SUPABASE_URL = 'https://scynvsojlwibfqxlnqqt.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_BE8snP8GE2yPjejbBS2GaQ_krH1NMoi';
+let sb=null, managerData=null, qrTimer=null, qrRefresh=null, managerPoll=null, clockTimer=null;
+let credential=null, statusPoll=null, currentQrToken='';
+const $ = id => document.getElementById(id);
+function show(id,on=true){$(id).classList.toggle('hidden',!on)}
+function setMsg(id,text,type=''){const el=$(id);el.textContent=text;el.className='status '+type;show(id,true)}
+function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function apiUrl(){return SUPABASE_URL.replace(/\/$/,'')+'/functions/v1/device-api'}
+async function deviceApi(payload){
+  const res=await fetch(apiUrl(),{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+SUPABASE_ANON_KEY},body:JSON.stringify(payload)});
+  let data={};try{data=await res.json()}catch(_){ }
+  if(!res.ok)throw new Error(data.error||'تعذر الاتصال بخدمة اعتماد الجوال');
+  return data;
+}
+
+// مفتاح ECDSA P-256: نخزن CryptoKey الخاص غير القابل للتصدير في IndexedDB، وليس في localStorage.
+function openKeyDb(){return new Promise((resolve,reject)=>{const request=indexedDB.open('attendance-device-vault',1);request.onupgradeneeded=()=>request.result.createObjectStore('credentials');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}
+async function vaultGet(){const db=await openKeyDb();return new Promise((resolve,reject)=>{const tx=db.transaction('credentials','readonly');const req=tx.objectStore('credentials').get('main');req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error)})}
+async function vaultPut(value){const db=await openKeyDb();return new Promise((resolve,reject)=>{const tx=db.transaction('credentials','readwrite');tx.objectStore('credentials').put(value,'main');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
+async function vaultClear(){const db=await openKeyDb();return new Promise((resolve,reject)=>{const tx=db.transaction('credentials','readwrite');tx.objectStore('credentials').delete('main');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
+function b64(bytes){let binary='';new Uint8Array(bytes).forEach(x=>binary+=String.fromCharCode(x));return btoa(binary)}
+async function createCredential(){
+  if(!crypto?.subtle||!indexedDB)throw new Error('هذا المتصفح لا يدعم التخزين التشفيري المطلوب. افتح الموقع بمتصفح حديث عبر HTTPS.');
+  let pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+  const publicJwk=await crypto.subtle.exportKey('jwk',pair.publicKey);
+  let privateJwk=await crypto.subtle.exportKey('jwk',pair.privateKey);
+  const privateKey=await crypto.subtle.importKey('jwk',privateJwk,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
+  privateJwk=null;pair=null;
+  const value={privateKey,publicJwk,deviceId:null};
+  await vaultPut(value);credential=value;
+  return value;
+}
+async function signMessage(message){
+  if(!credential?.privateKey)throw new Error('مفتاح هذا الجوال غير متوفر. أعد تسجيل الجهاز بمسح QR.');
+  const signature=await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},credential.privateKey,new TextEncoder().encode(message));
+  return b64(signature);
+}
+function deviceLabel(){const ua=navigator.userAgent||'';let os=/Android/i.test(ua)?'Android':/iPhone|iPad/i.test(ua)?'iPhone/iPad':/Windows/i.test(ua)?'Windows':/Mac OS/i.test(ua)?'Mac':'جهاز';let browser=/Edg\//i.test(ua)?'Edge':/Firefox\//i.test(ua)?'Firefox':/Chrome\//i.test(ua)?'Chrome':/Safari\//i.test(ua)?'Safari':'متصفح';return os+' - '+browser}
+
+async function init(){
+  if(SUPABASE_URL.startsWith('ضع_')||SUPABASE_ANON_KEY.startsWith('ضع_')){
+    setMsg('loginMsg','أكمل ربط Supabase بوضع Project URL و anon/public key في أعلى الملف.','warning');return;
+  }
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  const {data:{session}}=await sb.auth.getSession();
+  if(session){const ok=await enterManager();if(ok)return;}
+  const params=new URLSearchParams(location.search);currentQrToken=params.get('qr')||'';
+  const savedCredential=await vaultGet();
+  show('loginCard',false);show('qrHome',true);show('showAdminLogin',true);
+  if(currentQrToken||savedCredential?.deviceId){show('employeeCard',true);}
+  await initEmployeeFlow(currentQrToken);
+  updateClock();if(clockTimer)clearInterval(clockTimer);clockTimer=setInterval(updateClock,1000);
+  await startQrCycle();
+}
+async function loginManager(){
+  try{if(!sb)throw new Error('أكمل ربط Supabase أولاً');
+    const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;
+    const ok=await enterManager();if(!ok)throw new Error('هذا الحساب ليس مديراً أو أنه غير مفعل.');
+  }catch(e){setMsg('loginMsg',e.message,'error')}
+}
+async function enterManager(){
+  try{const {data,error}=await sb.rpc('manager_dashboard');if(error||!data)return false;
+    managerData=data;show('loginCard',false);show('employeeCard',false);show('qrHome',true);show('managerPanel',false);show('logoutBtn',true);show('showAdminLogin',false);show('adminPanelBtn',true);
+    $('who').textContent='لوحة الإدارة';
+    fillManagerSettings();renderManager();
+    if(managerPoll)clearInterval(managerPoll);managerPoll=setInterval(()=>loadDashboard(false),8000);
+    if(clockTimer)clearInterval(clockTimer);updateClock();clockTimer=setInterval(updateClock,1000);
+    return true;
+  }catch(_){return false}
+}
+function toggleManagerLogin(){const opening=$('loginCard').classList.contains('hidden');show('loginCard',opening);if(opening){$('email').focus();$('loginCard').scrollIntoView({behavior:'smooth',block:'center'});}}
+function toggleAdminPanel(){const opening=$('managerPanel').classList.contains('hidden');show('managerPanel',opening);if(opening)window.scrollTo({top:document.getElementById('managerPanel').offsetTop,behavior:'smooth'});}
+async function logoutManager(){if(managerPoll)clearInterval(managerPoll);await sb.auth.signOut();location.href=location.pathname}
+
+async function initEmployeeFlow(qrToken){
+  show('employeeCard',true);
+  try{
+    credential=await vaultGet();
+    if(!credential){
+      if(!qrToken){setMsg('employeeState','مرحباً. امسح رمز QR المعروض على شاشة الإدارة لبدء التسجيل.','warning');return;}
+      await beginEnrollment(qrToken);return;
+    }
+    if(!credential.deviceId){
+      if(qrToken){await beginEnrollment(qrToken);return;}
+      setMsg('employeeState','تم تجهيز مفتاح هذا الجوال، لكن طلب التسجيل لم يكتمل. امسح رمز QR مرة أخرى.','warning');return;
+    }
+    const state=await deviceApi({action:'status',device_id:credential.deviceId});
+    if(state.status==='verifying'){
+      if(qrToken){await beginEnrollment(qrToken);return;}
+      setMsg('employeeState','اكتملت تهيئة مفتاح الجوال، وبقي تأكيد الطلب. امسح رمز QR الحالي مرة أخرى لإكمال التسجيل.','warning');return;
+    }
+    if(state.status==='pending'){
+      setMsg('employeeState','تم استلام طلب اعتماد هذا الجوال. الطلب الآن بانتظار موافقة الإدارة. ستتحدث الحالة تلقائياً.','warning');startStatusPolling();return;
+    }
+    if(state.status==='rejected'||state.status==='revoked'){
+      if(qrToken){await vaultClear();credential=null;await beginEnrollment(qrToken);return;}
+      setMsg('employeeState','هذا الجهاز غير معتمد حالياً. امسح رمز QR من شاشة الإدارة لتقديم طلب جديد.','error');return;
+    }
+    if(state.status==='approved'&&state.employee?.active){
+      $('employeeHello').textContent='الجهاز معتمد للموظف: '+(state.employee.full_name||'موظف');show('employeeActions',true);
+      if(qrToken){$('employeeToken').value=qrToken;await submitEmployeeAttendance();}
+      else setMsg('employeeState','الجوال معتمد. امسح رمز QR الحالي من شاشة الإدارة لتسجيل حضورك أو انصرافك.','success');
+      return;
+    }
+    if(state.status==='approved'&&state.employee&&!state.employee.active){setMsg('employeeState','تم إيقاف سجل الموظف من الإدارة. راجع المدير لإعادة التفعيل.','error');return;}
+    setMsg('employeeState','الجهاز غير معتمد. امسح رمز QR من شاشة الإدارة.','warning');
+  }catch(e){setMsg('employeeState',e.message,'error')}
+}
+async function beginEnrollment(qrToken){
+  try{
+    setMsg('employeeState','جاري تجهيز مفتاح خاص لهذا الجوال وإرسال طلب الاعتماد...');
+    if(!credential)credential=await createCredential();
+    const enrolled=await deviceApi({action:'enroll',qr_token:qrToken,public_key:credential.publicJwk,device_name:deviceLabel(),user_agent:navigator.userAgent});
+    credential.deviceId=enrolled.device_id;await vaultPut(credential);
+    if(enrolled.status==='verifying'||enrolled.challenge){
+      const signature=await signMessage(enrolled.challenge);
+      await deviceApi({action:'confirm_enroll',device_id:enrolled.device_id,signature});
+    }
+    if(enrolled.status==='approved'){
+      const state=await deviceApi({action:'status',device_id:enrolled.device_id});
+      $('employeeHello').textContent='الجهاز معتمد للموظف: '+(state.employee?.full_name||'موظف');show('employeeActions',true);
+      $('employeeToken').value=qrToken;await submitEmployeeAttendance();return;
+    }
+    setMsg('employeeState','تم إرسال طلب اعتماد الجوال بنجاح. سيظهر الطلب لدى الإدارة، وبعد الموافقة يصبح هذا الجوال مرتبطاً بالموظف.','success');
+    startStatusPolling();
+  }catch(e){setMsg('employeeState',e.message,'error')}
+}
+function startStatusPolling(){if(statusPoll)clearInterval(statusPoll);statusPoll=setInterval(async()=>{
+  try{if(!credential?.deviceId)return;const state=await deviceApi({action:'status',device_id:credential.deviceId});
+    if(state.status==='approved'){clearInterval(statusPoll);statusPoll=null;if(state.employee?.active){$('employeeHello').textContent='الجهاز معتمد للموظف: '+(state.employee.full_name||'موظف');show('employeeActions',true);setMsg('employeeState','تمت الموافقة على جوالك. امسح رمز QR الحالي لتسجيل الحضور أو الانصراف.','success');}else{setMsg('employeeState','تم إيقاف سجل الموظف من الإدارة. راجع المدير لإعادة التفعيل.','error');}}
+    else if(state.status==='rejected'||state.status==='revoked'){clearInterval(statusPoll);statusPoll=null;setMsg('employeeState','تم رفض الطلب أو إلغاء اعتماد هذا الجوال. تواصل مع الإدارة.','error');}
+  }catch(_){/* إعادة المحاولة في الدورة التالية عند انقطاع الشبكة */}
+},5000)}
+async function submitEmployeeAttendance(){
+  try{
+    const token=$('employeeToken').value.trim();if(!token)throw new Error('امسح رمز QR الحالي أولاً.');
+    $('attendBtn').disabled=true;
+    const prep=await deviceApi({action:'prepare_attendance',device_id:credential.deviceId});
+    const signature=await signMessage(`${prep.nonce}|${credential.deviceId}|${token}`);
+    const result=await deviceApi({action:'record_attendance',device_id:credential.deviceId,challenge_id:prep.challenge_id,qr_token:token,signature});
+    const when=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(result.recorded_at));
+    setMsg('attendanceMsg',result.message+'\n'+when,'success');$('employeeToken').value='';
+    const u=new URL(location.href);u.searchParams.delete('qr');history.replaceState({},'',u);
+  }catch(e){setMsg('attendanceMsg',e.message,'error')}
+  finally{$('attendBtn').disabled=false;}
+}
+
+function updateClock(){const now=new Date();$('qrDate').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(now);$('qrClock').textContent='الوقت الآن: '+new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).format(now)}
+async function startQrCycle(){await refreshQr();if(qrRefresh)clearInterval(qrRefresh);qrRefresh=setInterval(refreshQr,20000)}
+async function refreshQr(){
+  try{const {data,error}=await sb.rpc('issue_qr_token');if(error)throw error;const row=Array.isArray(data)?data[0]:data;if(!row?.token)throw new Error('لم يصل رمز QR من قاعدة البيانات');
+    $('qr').innerHTML='';const link=new URL(location.href);link.search='';link.hash='';link.searchParams.set('qr',row.token);
+    new QRCode($('qr'),{text:link.toString(),width:230,height:230,correctLevel:QRCode.CorrectLevel.M});
+    let left=20;$('countdown').textContent=left;if(qrTimer)clearInterval(qrTimer);qrTimer=setInterval(()=>{$('countdown').textContent=Math.max(0,--left)},1000);show('qrError',false);
+  }catch(e){setMsg('qrError',e.message,'error')}
+}
+
+async function loadDashboard(render=true){try{const {data,error}=await sb.rpc('manager_dashboard');if(error)throw error;managerData=data;if(render)renderManager();else{renderRequests();renderAttendance();}fillManagerSettings(false);}catch(e){console.warn(e)}}
+function fillManagerSettings(initial=true){if(!managerData?.settings)return;const s=managerData.settings;
+  if(initial||document.activeElement!==$('workStart'))$('workStart').value=s.work_start||'08:00';
+  if(initial||document.activeElement!==$('workEnd'))$('workEnd').value=s.work_end||'17:00';
+  if(initial||document.activeElement!==$('inMessage'))$('inMessage').value=s.check_in_message||'';
+  if(initial||document.activeElement!==$('outMessage'))$('outMessage').value=s.check_out_message||'';
+}
+function renderManager(){renderRequests();renderStaff();renderAttendance()}
+function renderRequests(){
+  const previousSelections={};$('requests').querySelectorAll('select[id^="assign-"]').forEach(sel=>previousSelections[sel.id]=sel.value);
+  const requests=managerData?.requests||[],staff=managerData?.staff||[];
+  if(!requests.length){$('requests').textContent='لا توجد طلبات معلّقة حالياً.';return;}
+  $('requests').innerHTML=requests.map(r=>{
+    const chosen=previousSelections['assign-'+r.id]??(r.staff_id||'new');
+    const options=[`<option value="new" ${chosen==='new'?'selected':''}>موظف جديد (أضيف الاسم لاحقاً)</option>`,...staff.filter(s=>s.active).map(s=>`<option value="${esc(s.id)}" ${s.id===chosen?'selected':''}>${esc(s.full_name)}${s.employee_no?' — '+esc(s.employee_no):''}</option>`)].join('');
+    return `<div class="request"><b>${esc(r.device_name||'جهاز جوال')}</b><div class="muted">تاريخ الطلب: ${new Date(r.created_at).toLocaleString('ar-SA')}</div><div class="muted">${esc((r.user_agent||'').slice(0,130))}</div><label>اربط هذا الجوال بموظف</label><select id="assign-${esc(r.id)}">${options}</select><button class="smallbtn" onclick="reviewRequest('${esc(r.id)}',true)">موافقة</button><button class="danger smallbtn" onclick="reviewRequest('${esc(r.id)}',false)">رفض</button></div>`;
+  }).join('');
+}
+async function reviewRequest(id,approve){try{let staffId=null;if(approve){const v=$('assign-'+id).value;if(v!=='new')staffId=v;}
+  const {error}=await sb.rpc('review_device_request',{p_request_id:id,p_approve:approve,p_staff_id:staffId});if(error)throw error;
+  await loadDashboard(true);
+}catch(e){alert(e.message)}}
+function renderStaff(){
+  const rows=managerData?.staff||[];if(!rows.length){$('staffTable').textContent='لا يوجد موظفون معتمدون حتى الآن.';return;}
+  $('staffTable').innerHTML='<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الرقم الوظيفي</th><th>الحالة</th><th>حفظ</th></tr></thead><tbody>'+rows.map(s=>`<tr><td><input id="name-${esc(s.id)}" value="${esc(s.full_name)}"></td><td><input id="no-${esc(s.id)}" value="${esc(s.employee_no||'')}" placeholder="يُضاف لاحقاً"></td><td><select id="active-${esc(s.id)}"><option value="true" ${s.active?'selected':''}>نشط</option><option value="false" ${!s.active?'selected':''}>موقوف</option></select></td><td><button class="smallbtn" onclick="saveStaff('${esc(s.id)}')">حفظ</button></td></tr>`).join('')+'</tbody></table></div>';
+}
+async function saveStaff(id){try{const {error}=await sb.rpc('manager_update_staff',{p_staff_id:id,p_full_name:$('name-'+id).value.trim(),p_employee_no:$('no-'+id).value.trim(),p_active:$('active-'+id).value==='true'});if(error)throw error;await loadDashboard(true);alert('تم حفظ بيانات الموظف.')}catch(e){alert(e.message)}}
+function riyadhParts(value){const d=new Date(value),tz='Asia/Riyadh';return {date:new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(d),day:new Intl.DateTimeFormat('ar-SA',{timeZone:tz,weekday:'long'}).format(d),datetime:new Intl.DateTimeFormat('ar-SA',{timeZone:tz,weekday:'long',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:true}).format(d)}}
+function renderAttendance(){
+  const q=($('searchAttendance').value||'').trim().toLowerCase(),date=$('filterDate').value;
+  const rows=(managerData?.attendance||[]).filter(x=>(!q||String(x.full_name||'').toLowerCase().includes(q)||String(x.employee_no||'').toLowerCase().includes(q))&&(!date||riyadhParts(x.recorded_at).date===date));
+  $('attendanceTable').innerHTML='<table><thead><tr><th>الموظف</th><th>الرقم</th><th>الحركة</th><th>اليوم</th><th>التاريخ والوقت</th><th>التأخير / المبكر</th></tr></thead><tbody>'+rows.map(x=>{const t=riyadhParts(x.recorded_at);return `<tr><td>${esc(x.full_name)}</td><td>${esc(x.employee_no||'—')}</td><td>${x.event_type==='check_in'?'حضور':'انصراف'}</td><td>${t.day}</td><td>${t.datetime}</td><td>${x.event_type==='check_in'?(Number(x.late_minutes)>0?'متأخر '+x.late_minutes+' دقيقة':'في الوقت'):(Number(x.early_minutes)>0?'انصرف مبكراً '+x.early_minutes+' دقيقة':'في الوقت')}</td></tr>`}).join('')+'</tbody></table>';
+}
+async function saveSchedule(){try{const start=$('workStart').value,end=$('workEnd').value;if(!start||!end||start>=end)throw new Error('وقت نهاية الدوام يجب أن يكون بعد وقت البداية');const {error}=await sb.rpc('manager_save_schedule',{p_start:start,p_end:end});if(error)throw error;setMsg('scheduleMsg','تم حفظ أوقات الدوام.','success');await loadDashboard(false)}catch(e){setMsg('scheduleMsg',e.message,'error')}}
+async function saveMessages(){try{const {error}=await sb.rpc('manager_save_messages',{p_in:$('inMessage').value,p_out:$('outMessage').value});if(error)throw error;setMsg('messagesMsg','تم حفظ الرسائل.','success');await loadDashboard(false)}catch(e){setMsg('messagesMsg',e.message,'error')}}
+function downloadBlob(blob,name){const a=document.createElement('a');const url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function downloadBackup(){if(!managerData)return;downloadBlob(new Blob([JSON.stringify({exported_at:new Date().toISOString(),...managerData},null,2)],{type:'application/json'}),'attendance-backup.json')}
+function exportCSV(){const rows=[['الاسم','الرقم الوظيفي','الحركة','التاريخ والوقت'],...(managerData?.attendance||[]).map(x=>[x.full_name,x.employee_no,x.event_type,x.recorded_at])];const csv='\ufeff'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\n');downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),'attendance-report.csv')}
+
+init();
+</script>
+</body>
+</html>
