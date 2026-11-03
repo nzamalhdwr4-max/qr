@@ -15,7 +15,31 @@ h2{font-size:18px;margin:0 0 13px}h3{font-size:15px;margin:8px 0}p{line-height:1
 input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5e2;border-radius:9px;font:inherit;background:white;color:var(--ink)}textarea{min-height:84px}button{border:0;border-radius:9px;padding:10px 15px;background:var(--primary);color:white;font:inherit;cursor:pointer;margin:5px 3px}button.secondary{background:#e9efff;color:#1747a6}button.danger{background:var(--red)}button:disabled{opacity:.5;cursor:not-allowed}
 .row{display:flex;gap:12px;flex-wrap:wrap}.row>.field{flex:1;min-width:210px}.muted{color:var(--muted);font-size:13px}.hidden{display:none!important}.status{padding:12px 14px;border-radius:10px;background:#eef4ff;margin:12px 0;white-space:pre-wrap;line-height:1.7}.success{background:#e8f7ef;color:#087443}.error{background:#fff0f0;color:#a12626}.warning{background:#fff7e6;color:#8a5200}
 #qr{display:flex;justify-content:center;align-items:center;min-height:230px;margin:16px auto}#qr canvas,#qr img{max-width:100%;height:auto!important}.center{text-align:center}.count{font-size:30px;font-weight:bold;color:var(--primary)}.request{border:1px solid var(--line);border-radius:12px;padding:13px;margin:10px 0;background:#fbfcff}.request .row{align-items:end}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px;min-width:650px}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle}th{background:#f7f9fc}.smallbtn{padding:7px 10px;font-size:12px}.footnote{font-size:12px;color:var(--muted)}
-@media(max-width:600px){.wrap{margin:12px auto}.card{padding:14px}header{padding:14px}header h1{font-size:17px}.row>.field{min-width:100%}}
+/* بطاقة نتيجة الحضور على جوال الموظف */
+.attendance-success-wrap{max-width:540px;margin:24px auto}
+.attendance-success-card{overflow:hidden;border:1px solid #dce5f4;border-radius:26px;background:#fff;box-shadow:0 18px 50px rgba(16,42,86,.13)}
+.attendance-success-head{position:relative;overflow:hidden;padding:28px 24px 32px;color:#fff;background:linear-gradient(135deg,#102a56 0%,#155eef 58%,#6b55d9 100%)}
+.attendance-success-head:before,.attendance-success-head:after{content:"";position:absolute;border:1px solid rgba(255,255,255,.13);border-radius:50%;pointer-events:none}
+.attendance-success-head:before{width:230px;height:230px;left:-80px;top:-125px}
+.attendance-success-head:after{width:180px;height:180px;left:35px;bottom:-135px}
+.success-kicker{position:relative;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border:1px solid rgba(255,255,255,.24);border-radius:30px;background:rgba(255,255,255,.12);font-size:12px}
+.success-kicker b{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#d9ffeb;color:#087443;font-size:12px}
+.success-greeting{position:relative;margin:24px 0 5px;font-size:25px;font-weight:700}
+.success-name{position:relative;font-size:17px;color:#e4edff}
+.attendance-success-body{padding:20px 22px 17px}
+.success-event{display:flex;align-items:center;gap:13px;padding:15px;border:1px solid #e3eaf4;border-radius:17px;background:#f8faff}
+.success-event-icon{flex:0 0 42px;display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#e0f8eb;color:#07834a;font-size:23px;font-weight:bold}
+.success-event-copy{min-width:0;flex:1}
+.success-event-title{font-size:16px;font-weight:700;color:#162b4d}
+.success-event-sub{margin-top:4px;color:#68778e;font-size:12px}
+.success-event-tag{padding:6px 9px;border-radius:20px;background:#e9efff;color:#1747a6;font-size:11px;white-space:nowrap}
+.success-details{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:13px}
+.success-detail{padding:13px;border-radius:14px;background:#f3f6fb}
+.success-detail span{display:block;color:#758198;font-size:11px;margin-bottom:6px}
+.success-detail strong{font-size:13px;color:#1e2d46;line-height:1.6}
+.success-custom-message{margin-top:14px;padding:14px 15px;border-right:3px solid #28a66a;border-radius:10px;background:#f0fbf5;color:#145b3b;font-size:14px;line-height:1.9;white-space:pre-line}
+.success-footer{padding-top:16px;margin-top:15px;border-top:1px solid #edf0f5;text-align:center;color:#8994a7;font-size:11px}
+@media(max-width:600px){.wrap{margin:12px auto}.card{padding:14px}header{padding:14px}header h1{font-size:17px}.row>.field{min-width:100%}.attendance-success-wrap{margin:14px auto}.attendance-success-head{padding:25px 20px 29px}.success-greeting{font-size:23px}.attendance-success-body{padding:16px}.success-event{padding:12px;gap:10px}.success-event-tag{font-size:10px}.success-details{gap:8px}.success-detail{padding:11px}}
 @media print{header button,.no-print{display:none!important}body{background:#fff}.card{box-shadow:none;break-inside:avoid}}
 </style>
 </head>
@@ -44,6 +68,32 @@ input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5e2;border-ra
     </div>
     <button onclick="loginManager()">دخول الإدارة</button>
     <div id="loginMsg" class="status hidden"></div>
+  </section>
+
+  <section class="attendance-success-wrap hidden" id="attendanceSuccess" aria-live="polite">
+    <article class="attendance-success-card">
+      <div class="attendance-success-head">
+        <div class="success-kicker"><b>✓</b> تم التحقق بنجاح</div>
+        <div class="success-greeting" id="successGreeting">صباح الخير</div>
+        <div class="success-name" id="successName">زميلنا العزيز</div>
+      </div>
+      <div class="attendance-success-body">
+        <div class="success-event">
+          <div class="success-event-icon">✓</div>
+          <div class="success-event-copy">
+            <div class="success-event-title" id="successTitle">تم تسجيل حضورك بنجاح</div>
+            <div class="success-event-sub" id="successSubtitle">نتمنى لك يوماً سعيداً</div>
+          </div>
+          <div class="success-event-tag" id="successEventTag">حضور</div>
+        </div>
+        <div class="success-details">
+          <div class="success-detail"><span>التاريخ</span><strong id="successDate">—</strong></div>
+          <div class="success-detail"><span>وقت التسجيل</span><strong id="successTime">—</strong></div>
+        </div>
+        <div class="success-custom-message" id="successMessage"></div>
+        <div class="success-footer">نظام الحضور والانصراف · توقيت الرياض</div>
+      </div>
+    </article>
   </section>
 
   <section class="card hidden" id="employeeCard">
@@ -149,11 +199,14 @@ async function init(){
   if(session){const ok=await enterManager();if(ok)return;}
   const params=new URLSearchParams(location.search);currentQrToken=params.get('qr')||'';
   const savedCredential=await vaultGet();
-  show('loginCard',false);show('qrHome',true);show('showAdminLogin',true);
-  if(currentQrToken||savedCredential?.deviceId){show('employeeCard',true);}
+  const isEmployeeView=!!currentQrToken||!!savedCredential?.deviceId;
+  show('loginCard',false);show('qrHome',!isEmployeeView);show('showAdminLogin',!isEmployeeView);
+  if(isEmployeeView){show('employeeCard',true);$('who').textContent='بوابة الموظف';}
   await initEmployeeFlow(currentQrToken);
-  updateClock();if(clockTimer)clearInterval(clockTimer);clockTimer=setInterval(updateClock,1000);
-  await startQrCycle();
+  if(!isEmployeeView){
+    updateClock();if(clockTimer)clearInterval(clockTimer);clockTimer=setInterval(updateClock,1000);
+    await startQrCycle();
+  }
 }
 async function loginManager(){
   try{if(!sb)throw new Error('أكمل ربط Supabase أولاً');
@@ -242,10 +295,29 @@ async function submitEmployeeAttendance(){
     const signature=await signMessage(`${prep.nonce}|${credential.deviceId}|${token}`);
     const result=await deviceApi({action:'record_attendance',device_id:credential.deviceId,challenge_id:prep.challenge_id,qr_token:token,signature});
     const when=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(result.recorded_at));
-    setMsg('attendanceMsg',result.message+'\n'+when,'success');$('employeeToken').value='';
-    const u=new URL(location.href);u.searchParams.delete('qr');history.replaceState({},'',u);
+    showAttendanceSuccess(result,when);$('employeeToken').value='';
+    const u=new URL(location.href);u.searchParams.delete('qr');history.replaceState({},'',u);currentQrToken='';
   }catch(e){setMsg('attendanceMsg',e.message,'error')}
   finally{$('attendBtn').disabled=false;}
+}
+
+function showAttendanceSuccess(result,formattedDateTime){
+  const recordedAt=new Date(result.recorded_at);
+  const eventType=result.event_type==='check_out'?'check_out':'check_in';
+  const isCheckIn=eventType==='check_in';
+  const name=result.full_name||'زميلنا العزيز';
+  const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Riyadh',hour:'2-digit',hourCycle:'h23'}).format(recordedAt));
+  $('successGreeting').textContent=hour>=5&&hour<12?'صباح الخير 🌹':'مساء الخير 🌹';
+  $('successName').textContent=name;
+  $('successTitle').textContent=isCheckIn?'تم تسجيل حضورك بنجاح':'تم تسجيل انصرافك بنجاح';
+  $('successSubtitle').textContent=isCheckIn?'بداية موفقة ليوم عملك':'نتمنى لك مساءً سعيداً';
+  $('successEventTag').textContent=isCheckIn?'حضور':'انصراف';
+  $('successDate').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(recordedAt);
+  $('successTime').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit',hour12:true}).format(recordedAt);
+  $('successMessage').textContent=result.message||formattedDateTime||'';
+  show('attendanceSuccess',true);show('employeeCard',false);show('qrHome',false);show('loginCard',false);show('showAdminLogin',false);
+  $('who').textContent='أهلاً، '+name;
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 function updateClock(){const now=new Date();$('qrDate').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(now);$('qrClock').textContent='الوقت الآن: '+new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).format(now)}
