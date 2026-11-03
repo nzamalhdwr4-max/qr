@@ -51,10 +51,17 @@ input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5e2;border-ra
 <main class="wrap">
   <section class="card" id="qrHome">
     <h2 class="center">رمز QR للحضور والانصراف</h2>
-    <p class="muted center">امسح الرمز بكاميرا الجوال لتسجيل الحضور أو الانصراف. يتجدد الرمز كل 20 ثانية.</p>
-    <div class="center"><strong id="qrDate"></strong><div id="qrClock" class="muted"></div></div>
-    <div id="qr" class="center">جاري تجهيز الرمز...</div>
-    <div class="center"><span id="countdown" class="count">20</span><div class="muted">ثانية متبقية</div></div>
+    <p class="muted center" id="qrPublicNotice">رمز QR مخفي حالياً. سجّل دخول الإدارة ثم اضغط «إظهار رمز QR» لعرضه.</p>
+    <div class="center hidden" id="qrManagerControls">
+      <button class="secondary" id="showQrBtn" onclick="setQrVisible(true)">إظهار رمز QR</button>
+      <button class="secondary hidden" id="hideQrBtn" onclick="setQrVisible(false)">إخفاء رمز QR</button>
+    </div>
+    <div id="qrDisplay" class="hidden">
+      <p class="muted center">امسح الرمز بكاميرا الجوال لتسجيل الحضور أو الانصراف. يتجدد الرمز كل 20 ثانية.</p>
+      <div class="center"><strong id="qrDate"></strong><div id="qrClock" class="muted"></div></div>
+      <div id="qr" class="center"></div>
+      <div class="center"><span id="countdown" class="count">20</span><div class="muted">ثانية متبقية</div></div>
+    </div>
     <div id="qrError" class="status hidden error"></div>
     <div class="center"><button class="secondary hidden" id="adminPanelBtn" onclick="toggleAdminPanel()">لوحة الإدارة</button></div>
   </section>
@@ -201,12 +208,10 @@ async function init(){
   const savedCredential=await vaultGet();
   const isEmployeeView=!!currentQrToken||!!savedCredential?.deviceId;
   show('loginCard',false);show('qrHome',!isEmployeeView);show('showAdminLogin',!isEmployeeView);
-  if(isEmployeeView){show('employeeCard',true);$('who').textContent='بوابة الموظف';}
-  await initEmployeeFlow(currentQrToken);
-  if(!isEmployeeView){
-    updateClock();if(clockTimer)clearInterval(clockTimer);clockTimer=setInterval(updateClock,1000);
-    await startQrCycle();
-  }
+  show('employeeCard',isEmployeeView);show('qrManagerControls',false);show('qrDisplay',false);
+  if(isEmployeeView){$('who').textContent='بوابة الموظف';await initEmployeeFlow(currentQrToken);}
+  else {show('qrPublicNotice',true);show('adminPanelBtn',false);}
+
 }
 async function loginManager(){
   try{if(!sb)throw new Error('أكمل ربط Supabase أولاً');
@@ -216,7 +221,9 @@ async function loginManager(){
 }
 async function enterManager(){
   try{const {data,error}=await sb.rpc('manager_dashboard');if(error||!data)return false;
-    managerData=data;show('loginCard',false);show('employeeCard',false);show('qrHome',true);show('managerPanel',false);show('logoutBtn',true);show('showAdminLogin',false);show('adminPanelBtn',true);
+    managerData=data;show('loginCard',false);show('employeeCard',false);show('attendanceSuccess',false);show('qrHome',true);show('managerPanel',false);show('logoutBtn',true);show('showAdminLogin',false);show('adminPanelBtn',true);
+    show('qrPublicNotice',false);show('qrManagerControls',true);show('qrDisplay',false);show('showQrBtn',true);show('hideQrBtn',false);
+    if(qrRefresh)clearInterval(qrRefresh);qrRefresh=null;if(qrTimer)clearInterval(qrTimer);qrTimer=null;$('qr').innerHTML='';
     $('who').textContent='لوحة الإدارة';
     fillManagerSettings();renderManager();
     if(managerPoll)clearInterval(managerPoll);managerPoll=setInterval(()=>loadDashboard(false),8000);
@@ -307,10 +314,10 @@ function showAttendanceSuccess(result,formattedDateTime){
   const isCheckIn=eventType==='check_in';
   const name=result.full_name||'زميلنا العزيز';
   const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Riyadh',hour:'2-digit',hourCycle:'h23'}).format(recordedAt));
-  $('successGreeting').textContent=hour>=5&&hour<12?'صباح الخير 🌹':'مساء الخير 🌹';
+  $('successGreeting').textContent=isCheckIn?(hour>=5&&hour<12?'صباح الخير 🌹':'مساء الخير 🌹'):'مع السلامة 👋';
   $('successName').textContent=name;
   $('successTitle').textContent=isCheckIn?'تم تسجيل حضورك بنجاح':'تم تسجيل انصرافك بنجاح';
-  $('successSubtitle').textContent=isCheckIn?'بداية موفقة ليوم عملك':'نتمنى لك مساءً سعيداً';
+  $('successSubtitle').textContent=isCheckIn?'بداية موفقة ليوم عملك':'يومك سعيد، وبالتوفيق لك في يومك.';
   $('successEventTag').textContent=isCheckIn?'حضور':'انصراف';
   $('successDate').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(recordedAt);
   $('successTime').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit',hour12:true}).format(recordedAt);
@@ -321,8 +328,19 @@ function showAttendanceSuccess(result,formattedDateTime){
 }
 
 function updateClock(){const now=new Date();$('qrDate').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(now);$('qrClock').textContent='الوقت الآن: '+new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).format(now)}
-async function startQrCycle(){await refreshQr();if(qrRefresh)clearInterval(qrRefresh);qrRefresh=setInterval(refreshQr,20000)}
+async function setQrVisible(visible){
+  if(!managerData){setMsg('qrError','سجّل دخول الإدارة أولاً لإظهار رمز QR.','warning');return;}
+  show('qrDisplay',visible);show('showQrBtn',!visible);show('hideQrBtn',visible);show('qrError',false);
+  if(visible){await startQrCycle();}
+  else{
+    if(qrRefresh)clearInterval(qrRefresh);qrRefresh=null;
+    if(qrTimer)clearInterval(qrTimer);qrTimer=null;
+    $('qr').innerHTML='';$('countdown').textContent='—';
+  }
+}
+async function startQrCycle(){if(!managerData||$('qrDisplay').classList.contains('hidden'))return;await refreshQr();if(qrRefresh)clearInterval(qrRefresh);qrRefresh=setInterval(()=>{if(!$('qrDisplay').classList.contains('hidden'))refreshQr()},20000)}
 async function refreshQr(){
+  if(!managerData||$('qrDisplay').classList.contains('hidden'))return;
   try{const {data,error}=await sb.rpc('issue_qr_token');if(error)throw error;const row=Array.isArray(data)?data[0]:data;if(!row?.token)throw new Error('لم يصل رمز QR من قاعدة البيانات');
     $('qr').innerHTML='';const link=new URL(location.href);link.search='';link.hash='';link.searchParams.set('qr',row.token);
     new QRCode($('qr'),{text:link.toString(),width:230,height:230,correctLevel:QRCode.CorrectLevel.M});
