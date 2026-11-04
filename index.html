@@ -51,7 +51,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5e2;border-ra
 <main class="wrap">
   <section class="card" id="qrHome">
     <h2 class="center">رمز QR للحضور والانصراف</h2>
-    <p class="muted center" id="qrPublicNotice">رمز QR مخفي حالياً. سجّل دخول الإدارة ثم اضغط «إظهار رمز QR» لعرضه.</p>
+    <p class="muted center" id="qrPublicNotice">امسح رمز QR لتسجيل الحضور أو الانصراف. دخول الإدارة منفصل ومخصص للمدير فقط.</p>
     <div class="center hidden" id="qrManagerControls">
       <button class="secondary" id="showQrBtn" onclick="setQrVisible(true)">إظهار رمز QR</button>
       <button class="secondary hidden" id="hideQrBtn" onclick="setQrVisible(false)">إخفاء رمز QR</button>
@@ -144,6 +144,23 @@ input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5e2;border-ra
       <button onclick="saveMessages()">حفظ الرسائل</button><div id="messagesMsg" class="status hidden"></div>
     </div>
 
+    <div class="card" id="reportsCard">
+      <h2>التقارير الشهرية</h2>
+      <p class="muted">اختر الشهر والموظف، ثم اطبع كشف الحضور أو كشف الانصراف واحفظه بصيغة PDF.</p>
+      <div class="row">
+        <div class="field"><label for="reportMonth">الشهر</label><input id="reportMonth" type="month"></div>
+        <div class="field"><label for="reportStaff">الموظف</label><select id="reportStaff"><option value="all">جميع الموظفين</option></select></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button onclick="printAttendanceReport('check_in')">تصدير كشف الحضور PDF</button>
+        <button class="secondary" onclick="printAttendanceReport('check_out')">تصدير كشف الانصراف PDF</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="danger" onclick="deleteSelectedMonth()">حذف سجلات الشهر المحدد بالكامل</button>
+      </div>
+      <div id="reportHint" class="footnote">سيظهر التقرير بالتاريخ الميلادي وبترتيب الأيام خلال الشهر المحدد.</div>
+    </div>
+
     <div class="card">
       <h2>سجل الحضور والانصراف</h2>
       <div class="row"><div class="field"><label>بحث بالاسم أو الرقم الوظيفي</label><input id="searchAttendance" oninput="renderAttendance()" placeholder="ابحث..."></div><div class="field"><label>التاريخ</label><input id="filterDate" type="date" oninput="renderAttendance()"></div></div>
@@ -210,7 +227,7 @@ async function init(){
   show('loginCard',false);show('qrHome',!isEmployeeView);show('showAdminLogin',!isEmployeeView);
   show('employeeCard',isEmployeeView);show('qrManagerControls',false);show('qrDisplay',false);
   if(isEmployeeView){$('who').textContent='بوابة الموظف';await initEmployeeFlow(currentQrToken);}
-  else {show('qrPublicNotice',true);show('adminPanelBtn',false);}
+  else {show('qrPublicNotice',true);show('qrDisplay',true);show('adminPanelBtn',false);updateClock();if(clockTimer)clearInterval(clockTimer);clockTimer=setInterval(updateClock,1000);startQrCycle();}
 
 }
 async function loginManager(){
@@ -228,6 +245,7 @@ async function enterManager(){
     fillManagerSettings();renderManager();
     if(managerPoll)clearInterval(managerPoll);managerPoll=setInterval(()=>loadDashboard(false),8000);
     if(clockTimer)clearInterval(clockTimer);updateClock();clockTimer=setInterval(updateClock,1000);
+    await setQrVisible(true);
     return true;
   }catch(_){return false}
 }
@@ -329,7 +347,6 @@ function showAttendanceSuccess(result,formattedDateTime){
 
 function updateClock(){const now=new Date();$('qrDate').textContent=new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(now);$('qrClock').textContent='الوقت الآن: '+new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).format(now)}
 async function setQrVisible(visible){
-  if(!managerData){setMsg('qrError','سجّل دخول الإدارة أولاً لإظهار رمز QR.','warning');return;}
   show('qrDisplay',visible);show('showQrBtn',!visible);show('hideQrBtn',visible);show('qrError',false);
   if(visible){await startQrCycle();}
   else{
@@ -338,10 +355,10 @@ async function setQrVisible(visible){
     $('qr').innerHTML='';$('countdown').textContent='—';
   }
 }
-async function startQrCycle(){if(!managerData||$('qrDisplay').classList.contains('hidden'))return;await refreshQr();if(qrRefresh)clearInterval(qrRefresh);qrRefresh=setInterval(()=>{if(!$('qrDisplay').classList.contains('hidden'))refreshQr()},20000)}
+async function startQrCycle(){if($('qrDisplay').classList.contains('hidden'))return;await refreshQr();if(qrRefresh)clearInterval(qrRefresh);qrRefresh=setInterval(()=>{if(!$('qrDisplay').classList.contains('hidden'))refreshQr()},20000)}
 async function refreshQr(){
-  if(!managerData||$('qrDisplay').classList.contains('hidden'))return;
-  try{const {data,error}=await sb.rpc('issue_qr_token');if(error)throw error;const row=Array.isArray(data)?data[0]:data;if(!row?.token)throw new Error('لم يصل رمز QR من قاعدة البيانات');
+  if($('qrDisplay').classList.contains('hidden'))return;
+  try{const row=await deviceApi({action:'issue_qr_token'});if(!row?.token)throw new Error('لم يصل رمز QR من خدمة الإصدار');
     $('qr').innerHTML='';const link=new URL(location.href);link.search='';link.hash='';link.searchParams.set('qr',row.token);
     new QRCode($('qr'),{text:link.toString(),width:230,height:230,correctLevel:QRCode.CorrectLevel.M});
     let left=20;$('countdown').textContent=left;if(qrTimer)clearInterval(qrTimer);qrTimer=setInterval(()=>{$('countdown').textContent=Math.max(0,--left)},1000);show('qrError',false);
@@ -355,7 +372,7 @@ function fillManagerSettings(initial=true){if(!managerData?.settings)return;cons
   if(initial||document.activeElement!==$('inMessage'))$('inMessage').value=s.check_in_message||'';
   if(initial||document.activeElement!==$('outMessage'))$('outMessage').value=s.check_out_message||'';
 }
-function renderManager(){renderRequests();renderStaff();renderAttendance()}
+function renderManager(){renderRequests();renderStaff();renderAttendance();renderReportStaff()}
 function renderRequests(){
   const previousSelections={};$('requests').querySelectorAll('select[id^="assign-"]').forEach(sel=>previousSelections[sel.id]=sel.value);
   const requests=managerData?.requests||[],staff=managerData?.staff||[];
@@ -372,15 +389,70 @@ async function reviewRequest(id,approve){try{let staffId=null;if(approve){const 
 }catch(e){alert(e.message)}}
 function renderStaff(){
   const rows=managerData?.staff||[];if(!rows.length){$('staffTable').textContent='لا يوجد موظفون معتمدون حتى الآن.';return;}
-  $('staffTable').innerHTML='<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الرقم الوظيفي</th><th>الحالة</th><th>حفظ</th></tr></thead><tbody>'+rows.map(s=>`<tr><td><input id="name-${esc(s.id)}" value="${esc(s.full_name)}"></td><td><input id="no-${esc(s.id)}" value="${esc(s.employee_no||'')}" placeholder="يُضاف لاحقاً"></td><td><select id="active-${esc(s.id)}"><option value="true" ${s.active?'selected':''}>نشط</option><option value="false" ${!s.active?'selected':''}>موقوف</option></select></td><td><button class="smallbtn" onclick="saveStaff('${esc(s.id)}')">حفظ</button></td></tr>`).join('')+'</tbody></table></div>';
+  $('staffTable').innerHTML='<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الرقم الوظيفي</th><th>الحالة</th><th>حفظ</th><th>حذف الموظف وسجلاته</th></tr></thead><tbody>'+rows.map(s=>`<tr><td><input id="name-${esc(s.id)}" value="${esc(s.full_name)}"></td><td><input id="no-${esc(s.id)}" value="${esc(s.employee_no||'')}" placeholder="يُضاف لاحقاً"></td><td><select id="active-${esc(s.id)}"><option value="true" ${s.active?'selected':''}>نشط</option><option value="false" ${!s.active?'selected':''}>موقوف</option></select></td><td><button class="smallbtn" onclick="saveStaff('${esc(s.id)}')">حفظ</button></td><td><button class="danger smallbtn" onclick="deleteStaff('${esc(s.id)}','${esc(s.full_name)}')">حذف نهائي</button></td></tr>`).join('')+'</tbody></table></div>';
 }
 async function saveStaff(id){try{const {error}=await sb.rpc('manager_update_staff',{p_staff_id:id,p_full_name:$('name-'+id).value.trim(),p_employee_no:$('no-'+id).value.trim(),p_active:$('active-'+id).value==='true'});if(error)throw error;await loadDashboard(true);alert('تم حفظ بيانات الموظف.')}catch(e){alert(e.message)}}
+async function deleteStaff(id,name){if(!confirm('تأكيد الحذف النهائي للموظف '+name+'؟ سيتم حذف جميع سجلات حضوره وانصرافه وأجهزة اعتماده. لا يمكن التراجع.'))return;try{const {data,error}=await sb.rpc('manager_delete_staff',{p_staff_id:id});if(error)throw error;await loadDashboard(true);alert('تم حذف الموظف وسجلاته بنجاح.')}catch(e){alert('تعذر الحذف: '+e.message)}}
+async function deleteAttendance(id){if(!id){alert('معرّف السجل غير متوفر. حدّث لوحة الإدارة ثم أعد المحاولة.');return;}if(!confirm('تأكيد حذف سجل الحضور/الانصراف المحدد نهائياً؟'))return;try{const {error}=await sb.rpc('manager_delete_attendance',{p_attendance_id:id});if(error)throw error;await loadDashboard(true);alert('تم حذف السجل.')}catch(e){alert('تعذر الحذف: '+e.message)}}
+async function deleteSelectedMonth(){const value=$('reportMonth').value;if(!/^\d{4}-\d{2}$/.test(value)){alert('اختر الشهر أولاً.');return;}if(!confirm('تحذير: سيتم حذف جميع سجلات الحضور والانصراف لشهر '+value+' لجميع الموظفين. لا يمكن التراجع. هل تريد المتابعة؟'))return;try{const {data,error}=await sb.rpc('manager_delete_month',{p_month_start:value+'-01'});if(error)throw error;await loadDashboard(true);alert('تم حذف '+Number(data||0)+' سجل من الشهر المحدد.')}catch(e){alert('تعذر حذف الشهر: '+e.message)}}
 function riyadhParts(value){const d=new Date(value),tz='Asia/Riyadh';return {date:new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(d),day:new Intl.DateTimeFormat('ar-SA',{timeZone:tz,weekday:'long'}).format(d),datetime:new Intl.DateTimeFormat('ar-SA',{timeZone:tz,weekday:'long',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:true}).format(d)}}
 function renderAttendance(){
   const q=($('searchAttendance').value||'').trim().toLowerCase(),date=$('filterDate').value;
   const rows=(managerData?.attendance||[]).filter(x=>(!q||String(x.full_name||'').toLowerCase().includes(q)||String(x.employee_no||'').toLowerCase().includes(q))&&(!date||riyadhParts(x.recorded_at).date===date));
-  $('attendanceTable').innerHTML='<table><thead><tr><th>الموظف</th><th>الرقم</th><th>الحركة</th><th>اليوم</th><th>التاريخ والوقت</th><th>التأخير / المبكر</th></tr></thead><tbody>'+rows.map(x=>{const t=riyadhParts(x.recorded_at);return `<tr><td>${esc(x.full_name)}</td><td>${esc(x.employee_no||'—')}</td><td>${x.event_type==='check_in'?'حضور':'انصراف'}</td><td>${t.day}</td><td>${t.datetime}</td><td>${x.event_type==='check_in'?(Number(x.late_minutes)>0?'متأخر '+x.late_minutes+' دقيقة':'في الوقت'):(Number(x.early_minutes)>0?'انصرف مبكراً '+x.early_minutes+' دقيقة':'في الوقت')}</td></tr>`}).join('')+'</tbody></table>';
+  $('attendanceTable').innerHTML='<table><thead><tr><th>الموظف</th><th>الرقم</th><th>الحركة</th><th>اليوم</th><th>التاريخ والوقت</th><th>التأخير / المبكر</th><th>حذف</th></tr></thead><tbody>'+rows.map(x=>{const t=riyadhParts(x.recorded_at);return `<tr><td>${esc(x.full_name)}</td><td>${esc(x.employee_no||'—')}</td><td>${x.event_type==='check_in'?'حضور':'انصراف'}</td><td>${t.day}</td><td>${t.datetime}</td><td>${x.event_type==='check_in'?(Number(x.late_minutes)>0?'متأخر '+x.late_minutes+' دقيقة':'في الوقت'):(Number(x.early_minutes)>0?'انصرف مبكراً '+x.early_minutes+' دقيقة':'في الوقت')}</td><td><button class=\"danger smallbtn\" onclick=\"deleteAttendance('${esc(x.id)}')\">حذف</button></td></tr>`}).join('')+'</tbody></table>';
 }
+function renderReportStaff(){
+  const select=$('reportStaff');if(!select)return;const old=select.value||'all';
+  const staff=managerData?.staff||[];
+  select.innerHTML='<option value="all">جميع الموظفين</option>'+staff.map(s=>`<option value="${esc(s.id)}">${esc(s.full_name)}${s.employee_no?' — '+esc(s.employee_no):''}</option>`).join('');
+  if([...select.options].some(o=>o.value===old))select.value=old;
+  const month=$('reportMonth');if(month&&!month.value){const now=new Date();month.value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');}
+}
+async function printAttendanceReport(eventType){
+  if(!managerData){alert('بيانات الإدارة غير متاحة حالياً');return;}
+  const monthValue=$('reportMonth').value;if(!/^\d{4}-\d{2}$/.test(monthValue)){alert('اختر الشهر أولاً');return;}
+  const [year,month]=monthValue.split('-').map(Number),days=new Date(year,month,0).getDate();
+  const staffId=$('reportStaff').value,allStaff=managerData.staff||[];
+  const selected=staffId==='all'?allStaff:allStaff.filter(s=>s.id===staffId);
+  if(!selected.length){alert('لا يوجد موظفون مطابقون للاختيار');return;}
+
+  // افتح نافذة الطباعة مباشرة من ضغطة المستخدم لتفادي حظر النوافذ المنبثقة أثناء جلب التقرير.
+  const win=window.open('','_blank');
+  if(!win){alert('اسمح بالنوافذ المنبثقة لطباعة التقرير');return;}
+  win.document.write('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>جاري تجهيز التقرير</title><body style="font-family:Tahoma,Arial;text-align:center;padding:40px">جاري تجهيز التقرير الشهري…</body></html>');
+
+  try{
+    const monthStart=monthValue+'-01';
+    const {data,error}=await sb.rpc('manager_monthly_report',{p_month_start:monthStart,p_staff_id:staffId==='all'?null:staffId});
+    if(error)throw error;
+    const records=Array.isArray(data)?data:[];
+    const ownRecords=records.filter(r=>r.event_type===eventType);
+    const title=eventType==='check_in'?'كشف الحضور':'كشف الانصراف';
+    const monthLabel=new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{month:'long',year:'numeric',timeZone:'Asia/Riyadh'}).format(new Date(Date.UTC(year,month-1,15,12)));
+    const rows=[];let recordCount=0;
+    selected.forEach(staff=>{
+      const own=ownRecords.filter(r=>r.staff_id===staff.id);
+      for(let day=1;day<=days;day++){
+        const date=year+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+        const matches=own.filter(r=>riyadhParts(r.recorded_at).date===date).sort((a,b)=>new Date(a.recorded_at)-new Date(b.recorded_at));
+        const record=eventType==='check_in'?matches[0]:matches[matches.length-1];
+        if(record)recordCount++;
+        const dateObj=new Date(Date.UTC(year,month-1,day,12));
+        const dayName=new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{weekday:'long',timeZone:'Asia/Riyadh'}).format(dateObj);
+        const dateText=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Riyadh'}).format(dateObj);
+        const time=record?new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(record.recorded_at)):'—';
+        const status=record?(eventType==='check_in'?(Number(record.late_minutes)>0?'متأخر':'حاضر'):(Number(record.early_minutes)>0?'انصراف مبكر':'تم الانصراف')):'لا يوجد تسجيل';
+        rows.push(`<tr><td>${esc(staff.full_name)} / ${esc(staff.employee_no||'—')}</td><td>${dayName} — ${dateText}</td><td>${time}</td><td>${status}</td></tr>`);
+      }
+    });
+    const employeeLabel=staffId==='all'?'جميع الموظفين':(selected[0].full_name+' / '+(selected[0].employee_no||''));
+    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${title}</title><style>
+    @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#172033;margin:0}header{text-align:center;border-bottom:3px solid #183b68;padding:8px 0 14px;margin-bottom:16px}h1{font-size:23px;margin:0 0 8px;color:#15345d}.meta{font-size:13px;color:#4b5870;line-height:2}.summary{display:flex;justify-content:space-between;gap:12px;margin:12px 0 18px}.pill{border:1px solid #d8e1ed;border-radius:8px;padding:8px 12px;font-size:12px;background:#f7f9fc}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #aeb9c8;padding:8px;text-align:right}th{background:#eaf0f8;color:#17365e}tbody tr:nth-child(even){background:#f8fafc}.foot{margin-top:15px;text-align:center;color:#68758a;font-size:10px}@media print{button{display:none}}
+    </style></head><body><header><h1>${title}</h1><div class="meta">كشف ${eventType==='check_in'?'الحضور':'الانصراف'} — ${esc(employeeLabel)} — ${esc(monthLabel)}</div></header><div class="summary"><div class="pill">الفترة: ${monthValue}</div><div class="pill">عدد السجلات: ${recordCount}</div><div class="pill">المنطقة الزمنية: الرياض</div></div><table><thead><tr><th>الاسم / الرقم الوظيفي</th><th>التاريخ واليوم (ميلادي)</th><th>وقت ${eventType==='check_in'?'الحضور':'الانصراف'}</th><th>ملاحظات</th></tr></thead><tbody>${rows.join('')}</tbody></table><div class="foot">تم إنشاء هذا الكشف من نظام الحضور والانصراف</div><script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+    win.document.open();win.document.write(html);win.document.close();
+  }catch(e){win.close();alert('تعذر تجهيز التقرير: '+(e.message||e));}
+}
+
 async function saveSchedule(){try{const start=$('workStart').value,end=$('workEnd').value;if(!start||!end||start>=end)throw new Error('وقت نهاية الدوام يجب أن يكون بعد وقت البداية');const {error}=await sb.rpc('manager_save_schedule',{p_start:start,p_end:end});if(error)throw error;setMsg('scheduleMsg','تم حفظ أوقات الدوام.','success');await loadDashboard(false)}catch(e){setMsg('scheduleMsg',e.message,'error')}}
 async function saveMessages(){try{const {error}=await sb.rpc('manager_save_messages',{p_in:$('inMessage').value,p_out:$('outMessage').value});if(error)throw error;setMsg('messagesMsg','تم حفظ الرسائل.','success');await loadDashboard(false)}catch(e){setMsg('messagesMsg',e.message,'error')}}
 function downloadBlob(blob,name){const a=document.createElement('a');const url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
